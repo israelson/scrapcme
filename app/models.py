@@ -8,6 +8,10 @@ class SearchConfig(BaseModel):
     use_lens: bool = True
     use_epo: bool = True
     use_inpi: bool = True
+    # Custom queries — se vazios, usa os padrões do backend
+    lens_queries: list[dict] = []
+    epo_queries: list[dict] = []
+    inpi_queries: list[dict] = []
 
 
 class PatentResult(BaseModel):

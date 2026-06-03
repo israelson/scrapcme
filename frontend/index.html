@@ -79,6 +79,28 @@
     .fonte-epo  { color:#a78bfa; }
     .fonte-inpi { color:var(--green); }
 
+    /* Query editor */
+    .query-edit-row { border:1px solid var(--border); border-radius:8px; padding:10px 12px;
+      background:var(--surface2); margin-bottom:8px; }
+    .query-edit-label { display:flex; align-items:center; gap:8px; margin-bottom:6px; }
+    .query-edit-id { font-family:monospace; font-size:11px; color:var(--muted); }
+    .query-edit-desc { font-size:12px; color:var(--text); font-weight:600; }
+    .query-edit-input { background:var(--bg); border:1px solid var(--border); color:var(--text);
+      border-radius:5px; padding:5px 8px; font-size:12px; font-family:monospace;
+      width:100%; outline:none; resize:vertical; min-height:36px; }
+    .query-edit-input:focus { border-color:var(--accent); }
+
+    /* Diagnóstico INPI */
+    .diag-box { background:var(--surface2); border:1px solid var(--border); border-radius:8px;
+      padding:12px 14px; font-size:12px; margin-top:10px; }
+    .diag-row { display:flex; gap:8px; padding:3px 0; border-bottom:1px solid var(--border); }
+    .diag-row:last-child { border-bottom:none; }
+    .diag-key { color:var(--muted); width:180px; flex-shrink:0; }
+    .diag-val { color:var(--text); font-family:monospace; word-break:break-all; }
+    .diag-html { background:var(--bg); border:1px solid var(--border); border-radius:6px;
+      padding:8px; font-size:11px; font-family:monospace; color:#94a3b8;
+      overflow-x:auto; white-space:pre-wrap; max-height:200px; overflow-y:auto; margin-top:8px; }
+
     /* Modal */
     .modal-overlay {
       position:fixed; inset:0; background:rgba(0,0,0,.75); z-index:1000;
@@ -362,8 +384,194 @@ function ManualModal({ onClose }) {
   );
 }
 
+// ── Query Editor Modal ────────────────────────────────────────────────────────
+function QueryEditorModal({ queries, setQueries, onClose }) {
+  const fonteColor = f => f==='Lens'||f==='lens'?'var(--accent)':f==='EPO'||f==='epo'?'#a78bfa':'var(--green)';
+  const fonteBg    = f => f==='Lens'||f==='lens'?'#0e3a5c':f==='EPO'||f==='epo'?'#2d1b5c':'#0d3b2e';
+  const fonteLabel = f => f==='Lens'||f==='lens'?'Lens':f==='EPO'||f==='epo'?'EPO':'INPI';
+
+  const updateQuery = (fonte, idx, field, value) => {
+    setQueries(prev => ({
+      ...prev,
+      [fonte]: prev[fonte].map((q, i) => i === idx ? {...q, [field]: value} : q)
+    }));
+  };
+
+  const resetAll = async () => {
+    const resp = await fetch('/api/search/queries');
+    const data = await resp.json();
+    setQueries({ lens: data.lens, epo: data.epo, inpi: data.inpi });
+  };
+
+  const sections = [
+    { key:'lens', label:'Lens.org', field:'str', color:'var(--accent)' },
+    { key:'epo',  label:'EPO OPS',  field:'cql', color:'#a78bfa' },
+    { key:'inpi', label:'INPI pePI',field:'str', color:'var(--green)' },
+  ];
+
+  return (
+    <div className="modal-overlay" onClick={e => { if(e.target===e.currentTarget) onClose(); }}>
+      <div className="modal-box" style={{maxWidth:'820px'}}>
+        <div className="modal-header">
+          <div>
+            <div style={{fontSize:'16px',fontWeight:'700',color:'var(--accent)'}}>✏️ Editar Queries de Busca</div>
+            <div style={{fontSize:'11px',color:'var(--muted)',marginTop:'2px'}}>Altere as strings de busca de cada fonte. As mudanças valem apenas para a próxima busca.</div>
+          </div>
+          <div style={{display:'flex',gap:'8px'}}>
+            <button className="btn btn-ghost" style={{padding:'5px 12px',fontSize:'12px'}} onClick={resetAll}>
+              ↺ Restaurar padrões
+            </button>
+            <button className="btn btn-primary" style={{padding:'5px 14px',fontSize:'12px'}} onClick={onClose}>
+              ✓ Salvar e fechar
+            </button>
+          </div>
+        </div>
+        <div className="modal-body">
+          {sections.map(sec => (
+            <div key={sec.key} style={{marginBottom:'24px'}}>
+              <div style={{fontSize:'13px',fontWeight:'700',color:sec.color,marginBottom:'10px',
+                textTransform:'uppercase',letterSpacing:'.8px',borderBottom:`1px solid ${sec.color}33`,paddingBottom:'6px'}}>
+                {sec.label}
+                <span style={{fontSize:'11px',fontWeight:'400',color:'var(--muted)',marginLeft:'8px',textTransform:'none',letterSpacing:'0'}}>
+                  campo: <code style={{background:'var(--surface2)',padding:'1px 5px',borderRadius:'3px'}}>{sec.field}</code>
+                </span>
+              </div>
+              {(queries[sec.key]||[]).map((q, i) => (
+                <div key={q.id||i} className="query-edit-row">
+                  <div className="query-edit-label">
+                    <span style={{fontSize:'10px',fontWeight:'700',padding:'1px 6px',borderRadius:'4px',
+                      background:fonteBg(sec.key),color:fonteColor(sec.key)}}>{fonteLabel(sec.key)}</span>
+                    <span className="query-edit-id">{q.id}</span>
+                    <input
+                      style={{background:'transparent',border:'none',color:'var(--text)',fontSize:'12px',
+                        fontWeight:'600',outline:'none',flex:1}}
+                      value={q.desc||''}
+                      onChange={e => updateQuery(sec.key, i, 'desc', e.target.value)}
+                      placeholder="Descrição…"
+                    />
+                  </div>
+                  <textarea
+                    className="query-edit-input"
+                    value={q[sec.field]||''}
+                    onChange={e => updateQuery(sec.key, i, sec.field, e.target.value)}
+                    rows={2}
+                    placeholder={`String de busca (${sec.field})…`}
+                  />
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── INPI Diagnóstico Modal ─────────────────────────────────────────────────────
+function InpiDiagModal({ onClose }) {
+  const [queryStr, setQueryStr] = React.useState('ESTERILIZ*');
+  const [loading, setLoading] = React.useState(false);
+  const [result, setResult] = React.useState(null);
+
+  const runTest = async () => {
+    setLoading(true);
+    setResult(null);
+    try {
+      const resp = await fetch(`/api/search/test/inpi?q=${encodeURIComponent(queryStr)}`);
+      setResult(await resp.json());
+    } catch(e) {
+      setResult({ ok: false, erro: String(e) });
+    }
+    setLoading(false);
+  };
+
+  const statusColor = result
+    ? (result.ok && result.registros_parseados > 0 ? 'var(--green)'
+       : result.ok ? 'var(--yellow)'
+       : 'var(--red)')
+    : 'var(--muted)';
+
+  return (
+    <div className="modal-overlay" onClick={e => { if(e.target===e.currentTarget) onClose(); }}>
+      <div className="modal-box" style={{maxWidth:'680px'}}>
+        <div className="modal-header">
+          <div>
+            <div style={{fontSize:'16px',fontWeight:'700',color:'var(--green)'}}>🔬 Diagnóstico INPI pePI</div>
+            <div style={{fontSize:'11px',color:'var(--muted)',marginTop:'2px'}}>Testa uma query no portal INPI e mostra o que o servidor retornou.</div>
+          </div>
+          <button className="btn btn-ghost" style={{padding:'5px 12px',fontSize:'12px'}} onClick={onClose}>✕ Fechar</button>
+        </div>
+        <div className="modal-body">
+          <div style={{marginBottom:'12px'}}>
+            <div style={{fontSize:'12px',color:'var(--muted)',marginBottom:'6px'}}>String de busca para testar:</div>
+            <div style={{display:'flex',gap:'8px'}}>
+              <input className="input" value={queryStr} onChange={e=>setQueryStr(e.target.value)}
+                placeholder="Ex: ESTERILIZ* SISTEM*" style={{fontFamily:'monospace'}} />
+              <button className="btn btn-green" style={{flexShrink:0}} disabled={loading} onClick={runTest}>
+                {loading ? '⏳ Testando…' : '▶ Testar'}
+              </button>
+            </div>
+            <div style={{fontSize:'11px',color:'var(--muted)',marginTop:'4px'}}>
+              Sintaxe INPI: use <code style={{background:'var(--surface2)',padding:'1px 5px',borderRadius:'3px'}}>*</code> como curinga.
+              Ex: <code style={{background:'var(--surface2)',padding:'1px 5px',borderRadius:'3px'}}>CME* RASTREAB*</code>
+            </div>
+          </div>
+
+          {result && (
+            <div>
+              <div style={{display:'flex',alignItems:'center',gap:'8px',marginBottom:'10px'}}>
+                <span style={{width:10,height:10,borderRadius:'50%',background:statusColor,display:'inline-block'}}/>
+                <span style={{fontWeight:'700',color:statusColor,fontSize:'13px'}}>
+                  {!result.ok ? `Erro: ${result.erro||result.etapa}`
+                   : result.registros_parseados > 0 ? `OK — ${result.registros_parseados} registros parseados`
+                   : 'Conectou mas não encontrou registros (0 parseados)'}
+                </span>
+              </div>
+
+              {result.ok && (
+                <div className="diag-box">
+                  {[
+                    ['Status HTTP', result.status_http],
+                    ['URL final', result.url_final],
+                    ['Total na base (texto)', result.total_encontrado_na_base ?? '—'],
+                    ['Registros parseados', result.registros_parseados],
+                    ['Próxima página?', result.has_next_page ? 'Sim' : 'Não'],
+                  ].map(([k,v]) => (
+                    <div key={k} className="diag-row">
+                      <span className="diag-key">{k}</span>
+                      <span className="diag-val">{String(v)}</span>
+                    </div>
+                  ))}
+
+                  {result.primeiros_resultados?.length > 0 && (
+                    <div style={{marginTop:'10px'}}>
+                      <div style={{fontSize:'11px',color:'var(--muted)',marginBottom:'4px',fontWeight:'600'}}>PRIMEIROS RESULTADOS PARSEADOS</div>
+                      {result.primeiros_resultados.map((r,i)=>(
+                        <div key={i} style={{fontSize:'11px',padding:'4px 0',borderBottom:'1px solid var(--border)',color:'#94a3b8'}}>
+                          <span style={{fontFamily:'monospace',color:'var(--accent)',marginRight:'8px'}}>{r.numero}</span>
+                          {r.titulo}
+                          {r.depositante && <span style={{color:'var(--muted)',marginLeft:'8px'}}>— {r.depositante}</span>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div style={{marginTop:'10px'}}>
+                    <div style={{fontSize:'11px',color:'var(--muted)',marginBottom:'4px',fontWeight:'600'}}>HTML RETORNADO (primeiros 1500 chars)</div>
+                    <div className="diag-html">{result.html_snippet}</div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Components ────────────────────────────────────────────────────────────────
-function Header({ onManual }) {
+function Header({ onManual, onQueryEditor, onInpiDiag }) {
   return (
     <header style={{background:'var(--surface)', borderBottom:'1px solid var(--border)', padding:'14px 24px'}}>
       <div style={{display:'flex',alignItems:'center',gap:'16px',flexWrap:'wrap'}}>
@@ -375,6 +583,12 @@ function Header({ onManual }) {
           <span className="badge badge-lens">🔵 Lens.org</span>
           <span className="badge badge-epo">🟣 EPO OPS</span>
           <span className="badge badge-inpi">🟢 INPI pePI</span>
+          <button className="btn btn-ghost" style={{padding:'5px 12px',fontSize:'12px'}} onClick={onInpiDiag}>
+            🔬 Testar INPI
+          </button>
+          <button className="btn btn-ghost" style={{padding:'5px 12px',fontSize:'12px'}} onClick={onQueryEditor}>
+            ✏️ Editar Queries
+          </button>
           <button className="btn btn-ghost" style={{padding:'5px 12px',fontSize:'12px'}} onClick={onManual}>
             📖 Manual
           </button>
@@ -601,7 +815,18 @@ function App() {
   const [progress, setProgress] = useState({ pct:0, label:'' });
   const [activeTab, setActiveTab] = useState('patentes');
   const [showManual, setShowManual] = useState(false);
+  const [showQueryEditor, setShowQueryEditor] = useState(false);
+  const [showInpiDiag, setShowInpiDiag] = useState(false);
+  const [queries, setQueries] = useState({ lens: [], epo: [], inpi: [] });
   const evtRef = useRef(null);
+
+  // Carrega queries padrão ao iniciar
+  useEffect(() => {
+    fetch('/api/search/queries')
+      .then(r => r.json())
+      .then(data => setQueries({ lens: data.lens, epo: data.epo, inpi: data.inpi }))
+      .catch(() => {});
+  }, []);
 
   const addLog = (entry) => setLogs(prev => [...prev.slice(-500), entry]);
   const addResult = (r) => setResults(prev => [...prev, r]);
@@ -619,7 +844,12 @@ function App() {
     const resp = await fetch('/api/search/start', {
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body: JSON.stringify(config),
+      body: JSON.stringify({
+        ...config,
+        lens_queries: queries.lens,
+        epo_queries:  queries.epo,
+        inpi_queries: queries.inpi,
+      }),
     });
     const data = await resp.json();
     const sid = data.session_id;
@@ -653,8 +883,14 @@ function App() {
 
   return (
     <div style={{display:'flex',flexDirection:'column',height:'100vh'}}>
-      <Header onManual={() => setShowManual(true)} />
-      {showManual && <ManualModal onClose={() => setShowManual(false)} />}
+      <Header
+        onManual={() => setShowManual(true)}
+        onQueryEditor={() => setShowQueryEditor(true)}
+        onInpiDiag={() => setShowInpiDiag(true)}
+      />
+      {showManual      && <ManualModal onClose={() => setShowManual(false)} />}
+      {showQueryEditor && <QueryEditorModal queries={queries} setQueries={setQueries} onClose={() => setShowQueryEditor(false)} />}
+      {showInpiDiag    && <InpiDiagModal onClose={() => setShowInpiDiag(false)} />}
 
       <div style={{display:'flex',flex:1,overflow:'hidden'}}>
         <Sidebar config={config} setConfig={setConfig} onStart={handleStart} running={running} />

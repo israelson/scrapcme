@@ -32,15 +32,15 @@ def _run_in_thread(session_id: str, config: SearchConfig, loop: asyncio.Abstract
         session.logs.append(entry)
         asyncio.run_coroutine_threadsafe(queue.put(("log", entry)), loop)
 
-    total_sources = sum([
-        bool(config.use_lens and config.lens_token),
-        bool(config.use_epo and config.epo_key),
-        config.use_inpi,
-    ])
+    # Usar queries customizadas se fornecidas, senão usar os padrões
+    active_lens  = config.lens_queries  if config.lens_queries  else LENS_QUERIES
+    active_epo   = config.epo_queries   if config.epo_queries   else EPO_QUERIES
+    active_inpi  = config.inpi_queries  if config.inpi_queries  else INPI_QUERIES
+
     total_queries = (
-        (len(LENS_QUERIES) if config.use_lens and config.lens_token else 0)
-        + (len(EPO_QUERIES) if config.use_epo and config.epo_key else 0)
-        + (len(INPI_QUERIES) if config.use_inpi else 0)
+        (len(active_lens) if config.use_lens and config.lens_token else 0)
+        + (len(active_epo) if config.use_epo and config.epo_key else 0)
+        + (len(active_inpi) if config.use_inpi else 0)
     )
     completed_queries = 0
 
@@ -57,7 +57,7 @@ def _run_in_thread(session_id: str, config: SearchConfig, loop: asyncio.Abstract
         # --- Lens.org ---
         if config.use_lens and config.lens_token:
             log("=== Iniciando Lens.org ===")
-            for query in LENS_QUERIES:
+            for query in active_lens:
                 log(f"→ {query['id']}: {query['desc']}")
                 try:
                     results, total = search_lens(config.lens_token, query)
@@ -82,7 +82,7 @@ def _run_in_thread(session_id: str, config: SearchConfig, loop: asyncio.Abstract
         # --- EPO OPS ---
         if config.use_epo and config.epo_key:
             log("=== Iniciando EPO OPS ===")
-            for query in EPO_QUERIES:
+            for query in active_epo:
                 log(f"→ {query['id']}: {query['desc']}")
                 try:
                     results, total = search_epo(config.epo_key, config.epo_secret, query)
@@ -110,11 +110,11 @@ def _run_in_thread(session_id: str, config: SearchConfig, loop: asyncio.Abstract
             inpi_session = create_inpi_session()
             if not login_inpi(inpi_session):
                 log("INPI: falha ao iniciar sessão — ignorando fonte", "error")
-                for _ in INPI_QUERIES:
+                for _ in active_inpi:
                     update_progress("INPI → (skipped)")
             else:
                 log("INPI: sessão iniciada", "success")
-                for query in INPI_QUERIES:
+                for query in active_inpi:
                     log(f"→ {query['id']}: {query['desc']}")
                     try:
                         results, total = search_inpi(inpi_session, query, log_fn=log)
