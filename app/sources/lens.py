@@ -8,66 +8,113 @@ LENS_QUERIES = [
     {
         "id": "Q1_PT_CME_sistema",
         "desc": "CME + rastreabilidade/sistema (PT)",
-        "str": 'abstract:("central de material" OR "central de esterilização" OR "CME") AND abstract:("rastreabilidade" OR "sistema de informação" OR "software" OR "gestão")',
+        "str": '("central de material" OR "central de esterilização" OR "CME") AND ("rastreabilidade" OR "sistema de informação" OR "software" OR "gestão")',
+        "fields": ["abstract", "title", "claim"],
     },
     {
         "id": "Q2_EN_CSSD_software",
         "desc": "CSSD/SPD management software (EN)",
-        "str": 'abstract:("central sterile supply department" OR "sterile processing department" OR "CSSD" OR "SPD") AND abstract:("software" OR "information system" OR "traceability" OR "tracking")',
+        "str": '("central sterile supply department" OR "sterile processing department" OR "CSSD" OR "SPD") AND ("software" OR "information system" OR "traceability" OR "tracking")',
+        "fields": ["abstract", "title", "claim"],
     },
     {
         "id": "Q3_EN_decision_support",
         "desc": "Sterile processing decision support (EN)",
-        "str": 'abstract:("sterile processing" OR "CSSD" OR "central sterile") AND abstract:("decision support" OR "DSS" OR "quality management" OR "PDCA")',
+        "str": '("sterile processing" OR "CSSD" OR "central sterile") AND ("decision support" OR "DSS" OR "quality management" OR "PDCA")',
+        "fields": ["abstract", "title", "claim"],
     },
     {
         "id": "Q4_IPC_G16H",
         "desc": "IPC G16H – Informática em saúde + esterilização",
-        "str": 'classifications_ipcr.symbol:("G16H") AND abstract:("sterilization" OR "sterile processing" OR "CSSD")',
+        "str": '"sterilization" OR "sterile processing" OR "CSSD"',
+        "fields": ["abstract", "title"],
+        "ipc_filter": "G16H",
     },
     {
         "id": "Q5_IPC_A61L",
         "desc": "IPC A61L2 – Esterilização + software",
-        "str": 'classifications_ipcr.symbol:("A61L 2" OR "A61L2") AND abstract:("software" OR "information system" OR "tracking" OR "management")',
+        "str": '"software" OR "information system" OR "tracking" OR "management"',
+        "fields": ["abstract", "title"],
+        "ipc_filter": "A61L",
     },
     {
         "id": "Q6_EN_non_conformance",
         "desc": "Sterile processing non-conformance / quality control",
-        "str": 'abstract:("sterile processing" OR "CSSD") AND abstract:("non-conformance" OR "quality control" OR "corrective action" OR "KPI")',
+        "str": '("sterile processing" OR "CSSD") AND ("non-conformance" OR "quality control" OR "corrective action" OR "KPI")',
+        "fields": ["abstract", "title", "claim"],
     },
 ]
 
+INCLUDE_FIELDS = [
+    "lens_id",
+    "jurisdiction",
+    "doc_number",
+    "kind",
+    "date_published",
+    "biblio.publication_reference",
+    "biblio.invention_title",
+    "biblio.parties.applicants",
+    "biblio.classifications_ipcr",
+    "abstract",
+]
 
-def _build_payload(query_str: str) -> dict:
-    return {
-        "query": {"query_string": {"query": query_str}},
-        "size": 50,
-        "sort": [{"date_published": "desc"}],
-        "include": [
-            "lens_id",
-            "biblio.publication_reference",
-            "biblio.invention_title",
-            "biblio.parties.applicants",
-            "abstract",
-            "biblio.classifications_ipcr",
-            "date_published",
-            "jurisdiction",
-        ],
-        "filters": {
-            "date_published": {"gte": "2000-01-01", "lte": "2025-12-31"}
-        },
+
+def _build_payload(query: dict) -> dict:
+    """
+    Monta payload usando bool query com multi_match + filter de data.
+    Para queries com IPC usa term em class_ipcr.symbol.
+    """
+    fields = query.get("fields", ["abstract", "title"])
+    ipc_filter = query.get("ipc_filter")
+
+    text_clause = {
+        "multi_match": {
+            "query": query["str"],
+            "fields": fields,
+            "type": "cross_fields",
+            "operator": "or",
+        }
     }
 
+    must_clauses = [text_clause]
 
-def _extract_number(biblio: dict) -> str:
+    if ipc_filter:
+        must_clauses.append({
+            "query_string": {
+                "query": f"class_ipcr.symbol:{ipc_filter}*",
+            }
+        })
+
+    payload = {
+        "query": {
+            "bool": {
+                "must": must_clauses,
+                "filter": [
+                    {
+                        "range": {
+                            "date_published": {
+                                "gte": "2000-01-01",
+                                "lte": "2025-12-31",
+                            }
+                        }
+                    }
+                ],
+            }
+        },
+        "size": 50,
+        "sort": [{"date_published": "desc"}],
+        "include": INCLUDE_FIELDS,
+        "stemming": True,
+    }
+
+    return payload
+
+
+def _extract_number(data: dict) -> str:
     try:
-        ref = biblio.get("publication_reference", {})
-        doc = ref.get("document_id", {})
-        if isinstance(doc, list):
-            doc = doc[0]
-        jurisdiction = doc.get("country", "")
-        doc_number = doc.get("doc_number", "")
-        kind = doc.get("kind", "")
+        jurisdiction = data.get("jurisdiction", "")
+        doc_number = data.get("doc_number", "")
+        kind = data.get("kind", "")
         return f"{jurisdiction} {doc_number} {kind}".strip()
     except Exception:
         return ""
@@ -127,14 +174,14 @@ def search_lens(token: str, query: dict) -> tuple[list[PatentResult], int]:
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json",
     }
-    payload = _build_payload(query["str"])
+    payload = _build_payload(query)
 
     try:
         with httpx.Client(timeout=30) as client:
             resp = client.post(LENS_API_URL, headers=headers, json=payload)
             resp.raise_for_status()
             data = resp.json()
-    except Exception as e:
+    except Exception:
         return [], 0
 
     total = data.get("total", 0)
@@ -147,7 +194,7 @@ def search_lens(token: str, query: dict) -> tuple[list[PatentResult], int]:
             query_id=query["id"],
             descricao=query["desc"],
             fonte="Lens.org",
-            numero=_extract_number(biblio),
+            numero=_extract_number(hit),
             titulo=_extract_title(biblio),
             depositante=_extract_applicants(biblio),
             data_pub=hit.get("date_published", ""),
