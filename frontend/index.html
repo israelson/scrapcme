@@ -642,8 +642,10 @@ function App() {
         .then(s => setSumario(s.sumario || []));
     });
     es.onerror = () => {
-      addLog({ ts:'--:--:--', msg:'Conexão SSE encerrada.', level:'warn' });
-      es.close();
+      // SSE reconnects automatically — only log if already done
+      if (es.readyState === EventSource.CLOSED) {
+        addLog({ ts:'--:--:--', msg:'Conexão SSE encerrada.', level:'warn' });
+      }
     };
   };
 

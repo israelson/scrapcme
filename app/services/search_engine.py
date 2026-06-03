@@ -172,7 +172,13 @@ async def stream_events(session_id: str):
         return
 
     while True:
-        item = await queue.get()
+        try:
+            item = await asyncio.wait_for(queue.get(), timeout=15.0)
+        except asyncio.TimeoutError:
+            # Send keepalive to prevent proxy/load-balancer from closing the connection
+            yield "keepalive", {}
+            continue
+
         if item is None:
             break
         event_type, data = item

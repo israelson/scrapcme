@@ -19,8 +19,11 @@ async def search_start(config: SearchConfig):
 async def search_stream(session_id: str):
     async def generator():
         async for event_type, data in stream_events(session_id):
-            payload = json.dumps(data, ensure_ascii=False)
-            yield f"event: {event_type}\ndata: {payload}\n\n"
+            if event_type == "keepalive":
+                yield ": keepalive\n\n"
+            else:
+                payload = json.dumps(data, ensure_ascii=False)
+                yield f"event: {event_type}\ndata: {payload}\n\n"
 
     return StreamingResponse(
         generator(),
